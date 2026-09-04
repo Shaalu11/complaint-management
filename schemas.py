@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 class Student(BaseModel):
     id: int
@@ -22,8 +23,8 @@ class ComplaintResponse(BaseModel):
     category:str
     student_id:int
     status:str
-    created_at:Optional[str] = None
-    updated_at:Optional[str] = None
+    created_at:Optional[datetime] = None
+    updated_at:Optional[datetime] = None
 
 
 
