@@ -12,8 +12,15 @@ class Student(Base):
     name: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(100), unique=True)
     room_number: Mapped[str] = mapped_column(String(20))
-
     complaints = relationship("Complaint", back_populates="student")
+    username: Mapped[str] = mapped_column(
+    String(50),
+    unique=True,
+    nullable=False)
+    
+    password_hash: Mapped[str] = mapped_column(
+    String(255),
+    nullable=False)
 
 
 class Complaint(Base):

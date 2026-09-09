@@ -4,7 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from db_models import Student, Complaint
-from schemas import ComplaintCreate, ComplaintResponse, ComplaintUpdate
+from schemas import ComplaintCreate, ComplaintResponse, ComplaintUpdate, SignupRequest, LoginRequest, TokenResponse
+from auth import create_access_token, verify_password, hash_password, get_current_student
+
 
 
 
@@ -23,25 +25,14 @@ def health():
 )
 async def create_complaint(
     complaint: ComplaintCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_student: Student = Depends(get_current_student)
 ):
-    result = await db.execute(
-        select(Student).where(Student.id == complaint.student_id)
-    )
-
-    student = result.scalar_one_or_none()
-
-    if student is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Student with ID {complaint.student_id} does not exist"
-        )
-
     new_complaint = Complaint(
         title=complaint.title,
         description=complaint.description,
         category=complaint.category,
-        student_id=complaint.student_id,
+        student_id=current_student.id,
         status="Pending"
     )
 
@@ -148,4 +139,98 @@ async def delete_complaint(
 
     return {
         "message": f"Complaint {complaint_id} deleted successfully"
+    }
+
+
+@app.post("/signup")
+async def signup(
+    signup_data: SignupRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Student).where(
+            Student.username == signup_data.username
+        )
+    )
+
+    existing_student = result.scalar_one_or_none()
+
+    if existing_student:
+        raise HTTPException(
+            status_code=400,
+            detail="Username already exists"
+        )
+
+    result = await db.execute(
+        select(Student).where(
+            Student.email == signup_data.email
+        )
+    )
+
+    existing_email = result.scalar_one_or_none()
+
+    if existing_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
+
+    hashed_password = hash_password(
+        signup_data.password
+    )
+
+    student = Student(
+        username=signup_data.username,
+        password_hash=hashed_password,
+        name=signup_data.name,
+        email=signup_data.email,
+        room_number=signup_data.room_number
+    )
+
+    db.add(student)
+
+    await db.commit()
+
+    await db.refresh(student)
+
+    return {
+        "message": "Account created successfully",
+        "username": student.username
+    }
+
+@app.post("/login", response_model=TokenResponse)
+async def login(
+    login_data: LoginRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Student).where(
+            Student.username == login_data.username
+        )
+    )
+
+    student = result.scalar_one_or_none()
+
+    if student is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
+
+    if not verify_password(
+        login_data.password,
+        student.password_hash
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
+
+    access_token = create_access_token(
+        student.id
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
     }

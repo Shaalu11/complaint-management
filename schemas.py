@@ -13,7 +13,6 @@ class ComplaintCreate(BaseModel):
     title:str
     description:str
     category:str
-    student_id:int
 
 #API sends this back
 class ComplaintResponse(BaseModel):
@@ -33,3 +32,17 @@ class ComplaintUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class SignupRequest(BaseModel):
+    username: str
+    password: str
+    name: str
+    email: str
+    room_number: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
