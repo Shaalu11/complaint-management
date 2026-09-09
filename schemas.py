@@ -26,5 +26,10 @@ class ComplaintResponse(BaseModel):
     created_at:Optional[datetime] = None
     updated_at:Optional[datetime] = None
 
+class ComplaintUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    status: Optional[str] = None
 
 

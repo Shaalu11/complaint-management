@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from db_models import Student, Complaint
-from schemas import ComplaintCreate, ComplaintResponse
+from schemas import ComplaintCreate, ComplaintResponse, ComplaintUpdate
+
 
 
 app = FastAPI()
@@ -92,3 +93,59 @@ async def get_complaint(
         )
 
     return complaint
+
+@app.patch(
+    "/complaints/{complaint_id}",
+    response_model=ComplaintResponse
+)
+async def update_complaint(
+    complaint_id: int,
+    complaint_update: ComplaintUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Complaint).where(Complaint.id == complaint_id)
+    )
+
+    complaint = result.scalar_one_or_none()
+
+    if complaint is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Complaint with ID {complaint_id} not found"
+        )
+
+    update_data = complaint_update.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        setattr(complaint, field, value)
+
+    await db.commit()
+    await db.refresh(complaint)
+
+    return complaint
+
+@app.delete("/complaints/{complaint_id}")
+async def delete_complaint(
+    complaint_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Complaint).where(Complaint.id == complaint_id)
+    )
+
+    complaint = result.scalar_one_or_none()
+
+    if complaint is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Complaint with ID {complaint_id} not found"
+        )
+
+    await db.delete(complaint)
+
+    await db.commit()
+
+    return {
+        "message": f"Complaint {complaint_id} deleted successfully"
+    }
