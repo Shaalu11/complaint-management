@@ -97,7 +97,7 @@ def create_access_token(student_id: int) -> str:
 async def get_current_student(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
-):
+) -> Student:
     """
     Verify the JWT token and return the
     currently logged-in student.
