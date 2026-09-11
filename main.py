@@ -71,25 +71,45 @@ async def create_complaint(
 # Only complaints belonging to logged-in student
 # ==================================================
 
-@app.get(
-    "/complaints",
-    response_model=list[ComplaintResponse]
-)
+@app.get("/complaints", response_model=list[ComplaintResponse])
 async def get_complaints(
+    category: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-    current_student: Student = Depends(get_current_student)
+    db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(
-        select(Complaint)
-        .where(
-            Complaint.student_id == current_student.id
+    query = select(Complaint)
+
+    # Filter by category
+    if category:
+        query = query.where(
+            Complaint.category == category
         )
+
+    # Filter by status
+    if status:
+        query = query.where(
+            Complaint.status == status
+        )
+
+    # Search title and description
+    if search:
+        query = query.where(
+            Complaint.title.ilike(f"%{search}%") |
+            Complaint.description.ilike(f"%{search}%")
+        )
+
+    # Stable ordering and pagination
+    query = (
+        query
         .order_by(Complaint.id)
         .offset(skip)
         .limit(limit)
     )
+
+    result = await db.execute(query)
 
     complaints = result.scalars().all()
 
