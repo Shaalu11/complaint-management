@@ -22,6 +22,9 @@ from auth import (
     get_current_student
 )
 
+from notification_service import notification_service
+from escalation_service import escalation_service
+
 
 app = FastAPI()
 
@@ -62,6 +65,16 @@ async def create_complaint(
     await db.commit()
 
     await db.refresh(new_complaint)
+
+    await notification_service.send_complaint_notification(
+    student_email=current_student.email,
+    complaint_id=new_complaint.id,
+    title=new_complaint.title)
+
+    await escalation_service.escalate_complaint(
+    complaint_id=new_complaint.id,
+    category=new_complaint.category,
+    title=new_complaint.title)
 
     return new_complaint
 
