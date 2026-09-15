@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
@@ -24,6 +25,13 @@ from auth import (
 
 from notification_service import notification_service
 from escalation_service import escalation_service
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI()
@@ -52,32 +60,50 @@ async def create_complaint(
     db: AsyncSession = Depends(get_db),
     current_student: Student = Depends(get_current_student)
 ):
-    new_complaint = Complaint(
-        title=complaint.title,
-        description=complaint.description,
-        category=complaint.category,
-        student_id=current_student.id,
-        status="Pending"
-    )
+    try:
+        new_complaint = Complaint(
+            title=complaint.title,
+            description=complaint.description,
+            category=complaint.category,
+            student_id=current_student.id,
+            status="Pending"
+        )
 
-    db.add(new_complaint)
+        db.add(new_complaint)
 
-    await db.commit()
+        await db.commit()
 
-    await db.refresh(new_complaint)
+        await db.refresh(new_complaint)
 
-    await notification_service.send_complaint_notification(
-    student_email=current_student.email,
-    complaint_id=new_complaint.id,
-    title=new_complaint.title)
+        await notification_service.send_complaint_notification(
+            student_email=current_student.email,
+            complaint_id=new_complaint.id,
+            title=new_complaint.title
+        )
 
-    await escalation_service.escalate_complaint(
-    complaint_id=new_complaint.id,
-    category=new_complaint.category,
-    title=new_complaint.title)
+        await escalation_service.escalate_complaint(
+            complaint_id=new_complaint.id,
+            category=new_complaint.category,
+            title=new_complaint.title
+        )
 
-    return new_complaint
+        return new_complaint
 
+    except HTTPException:
+        raise
+
+    except Exception:
+        await db.rollback()
+
+        logger.exception(
+            "Failed to create complaint for student %s",
+            current_student.id
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create complaint"
+        )
 
 # ==================================================
 # GET ALL COMPLAINTS
@@ -191,18 +217,31 @@ async def update_complaint(
             detail="Complaint not found"
         )
 
-    update_data = complaint_update.model_dump(
-        exclude_unset=True
-    )
+    try:
+        update_data = complaint_update.model_dump(
+            exclude_unset=True
+        )
 
-    for field, value in update_data.items():
-        setattr(complaint, field, value)
+        for field, value in update_data.items():
+            setattr(complaint, field, value)
 
-    await db.commit()
+        await db.commit()
+        await db.refresh(complaint)
 
-    await db.refresh(complaint)
+        return complaint
 
-    return complaint
+    except Exception:
+        await db.rollback()
+
+        logger.exception(
+            "Failed to update complaint %s",
+            complaint_id
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update complaint"
+        )
 
 
 # ==================================================
@@ -231,13 +270,27 @@ async def delete_complaint(
             detail="Complaint not found"
         )
 
-    await db.delete(complaint)
+    try:
+        await db.delete(complaint)
 
-    await db.commit()
+        await db.commit()
 
-    return {
-        "message": f"Complaint {complaint_id} deleted successfully"
-    }
+        return {
+            "message": f"Complaint {complaint_id} deleted successfully"
+        }
+
+    except Exception:
+        await db.rollback()
+
+        logger.exception(
+            "Failed to delete complaint %s",
+            complaint_id
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to delete complaint"
+        )
 
 
 # ==================================================
