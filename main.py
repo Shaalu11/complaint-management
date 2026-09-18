@@ -1,4 +1,5 @@
 import logging
+
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
@@ -12,7 +13,6 @@ from schemas import (
     ComplaintResponse,
     ComplaintUpdate,
     SignupRequest,
-    LoginRequest,
     TokenResponse
 )
 
@@ -26,6 +26,11 @@ from auth import (
 from notification_service import notification_service
 from escalation_service import escalation_service
 
+
+# ==================================================
+# LOGGING
+# ==================================================
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
@@ -34,14 +39,54 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI()
+# ==================================================
+# FASTAPI APPLICATION
+# ==================================================
+
+app = FastAPI(
+    title="Hostel Complaint Management API",
+    description="""
+## Hostel Complaint Management API
+
+A RESTful API for managing hostel complaints.
+
+### Features
+
+- Student registration and authentication
+- JWT-based authorization
+- Create, view, update, and delete complaints
+- Complaint search and filtering
+- Pagination
+- Notification service integration
+- Complaint escalation service
+- Automated testing
+- PostgreSQL database with Alembic migrations
+
+### Authentication
+
+Protected endpoints require a JWT access token.
+
+Use the `/login` endpoint to obtain an access token and then authorize
+requests using the **Bearer Token** authentication scheme.
+""",
+    version="1.0.0",
+    contact={
+        "name": "Hostel Complaint Management System"
+    },
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 
 # ==================================================
 # HEALTH CHECK
 # ==================================================
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["System"],
+    summary="Check API health"
+)
 def health():
     return {"status": "success"}
 
@@ -53,7 +98,15 @@ def health():
 @app.post(
     "/complaints",
     response_model=ComplaintResponse,
-    status_code=201
+    status_code=201,
+    tags=["Complaints"],
+    summary="Create a new complaint",
+    description=(
+        "Create a new complaint for the logged-in student. "
+        "The complaint will be automatically escalated and "
+        "a notification will be sent to the student upon "
+        "successful creation."
+    )
 )
 async def create_complaint(
     complaint: ComplaintCreate,
@@ -61,6 +114,7 @@ async def create_complaint(
     current_student: Student = Depends(get_current_student)
 ):
     try:
+        # Create complaint
         new_complaint = Complaint(
             title=complaint.title,
             description=complaint.description,
@@ -71,16 +125,18 @@ async def create_complaint(
 
         db.add(new_complaint)
 
+        # Save complaint
         await db.commit()
-
         await db.refresh(new_complaint)
 
+        # Send notification
         await notification_service.send_complaint_notification(
             student_email=current_student.email,
             complaint_id=new_complaint.id,
             title=new_complaint.title
         )
 
+        # Escalate complaint
         await escalation_service.escalate_complaint(
             complaint_id=new_complaint.id,
             category=new_complaint.category,
@@ -105,21 +161,36 @@ async def create_complaint(
             detail="Unable to create complaint"
         )
 
+
 # ==================================================
 # GET ALL COMPLAINTS
 # Only complaints belonging to logged-in student
 # ==================================================
 
-@app.get("/complaints", response_model=list[ComplaintResponse])
+@app.get(
+    "/complaints",
+    response_model=list[ComplaintResponse],
+    tags=["Complaints"],
+    summary="Get all complaints",
+    description=(
+        "Retrieve complaints belonging to the logged-in student. "
+        "Supports category filtering, status filtering, search, "
+        "and pagination."
+    )
+)
 async def get_complaints(
     category: str | None = None,
     status: str | None = None,
     search: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_student: Student = Depends(get_current_student)
 ):
-    query = select(Complaint)
+    # Start query with ownership restriction
+    query = select(Complaint).where(
+        Complaint.student_id == current_student.id
+    )
 
     # Filter by category
     if category:
@@ -162,7 +233,13 @@ async def get_complaints(
 
 @app.get(
     "/complaints/{complaint_id}",
-    response_model=ComplaintResponse
+    response_model=ComplaintResponse,
+    tags=["Complaints"],
+    summary="Get a specific complaint",
+    description=(
+        "Retrieve details of a specific complaint belonging "
+        "to the logged-in student."
+    )
 )
 async def get_complaint(
     complaint_id: int,
@@ -194,7 +271,13 @@ async def get_complaint(
 
 @app.patch(
     "/complaints/{complaint_id}",
-    response_model=ComplaintResponse
+    response_model=ComplaintResponse,
+    tags=["Complaints"],
+    summary="Update a specific complaint",
+    description=(
+        "Update details of a specific complaint belonging "
+        "to the logged-in student."
+    )
 )
 async def update_complaint(
     complaint_id: int,
@@ -218,10 +301,12 @@ async def update_complaint(
         )
 
     try:
+        # Get only fields provided by the user
         update_data = complaint_update.model_dump(
             exclude_unset=True
         )
 
+        # Update complaint fields
         for field, value in update_data.items():
             setattr(complaint, field, value)
 
@@ -249,7 +334,15 @@ async def update_complaint(
 # Only owner can delete it
 # ==================================================
 
-@app.delete("/complaints/{complaint_id}")
+@app.delete(
+    "/complaints/{complaint_id}",
+    tags=["Complaints"],
+    summary="Delete a specific complaint",
+    description=(
+        "Delete a specific complaint belonging to the "
+        "logged-in student."
+    )
+)
 async def delete_complaint(
     complaint_id: int,
     db: AsyncSession = Depends(get_db),
@@ -297,7 +390,15 @@ async def delete_complaint(
 # SIGNUP
 # ==================================================
 
-@app.post("/signup")
+@app.post(
+    "/signup",
+    tags=["Authentication"],
+    summary="Register a new student account",
+    description=(
+        "Create a new student account with a unique username "
+        "and email. Passwords are securely hashed before storage."
+    )
+)
 async def signup(
     signup_data: SignupRequest,
     db: AsyncSession = Depends(get_db)
@@ -349,7 +450,6 @@ async def signup(
     db.add(student)
 
     await db.commit()
-
     await db.refresh(student)
 
     return {
@@ -362,11 +462,21 @@ async def signup(
 # LOGIN
 # ==================================================
 
-@app.post("/login", response_model=TokenResponse)
+@app.post(
+    "/login",
+    response_model=TokenResponse,
+    tags=["Authentication"],
+    summary="Authenticate a student and obtain an access token",
+    description=(
+        "Authenticate a student using their username and password. "
+        "Returns a JWT access token upon successful authentication."
+    )
+)
 async def login(
     login_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
+    # Find student by username
     result = await db.execute(
         select(Student).where(
             Student.username == login_data.username
@@ -381,6 +491,7 @@ async def login(
             detail="Invalid username or password"
         )
 
+    # Verify password
     if not verify_password(
         login_data.password,
         student.password_hash
@@ -390,7 +501,10 @@ async def login(
             detail="Invalid username or password"
         )
 
-    access_token = create_access_token(student.id)
+    # Create JWT access token
+    access_token = create_access_token(
+        student.id
+    )
 
     return {
         "access_token": access_token,
