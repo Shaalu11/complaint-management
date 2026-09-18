@@ -63,7 +63,7 @@ hostel-complaint-management/
 ├── requirements.txt
 └── README.md
 
-## Requirements
+##Requirements
 Python 3.12+
 PostgreSQL
 pip
