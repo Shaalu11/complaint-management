@@ -2,7 +2,7 @@ import logging
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -85,10 +85,25 @@ requests using the **Bearer Token** authentication scheme.
 @app.get(
     "/health",
     tags=["System"],
-    summary="Check API health"
+    summary="Check API and database health",
+    description="Checks whether the API and PostgreSQL database are available."
 )
-def health():
-    return {"status": "success"}
+async def health(db: AsyncSession = Depends(get_db)):
+    try:
+        await db.execute(text("SELECT 1"))
+
+        return {
+            "status": "healthy",
+            "database": "connected"
+        }
+
+    except Exception:
+        logger.exception("Health check failed")
+
+        return {
+            "status": "unhealthy",
+            "database": "unavailable"
+        }
 
 
 # ==================================================
