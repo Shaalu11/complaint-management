@@ -22,13 +22,15 @@ A FastAPI-based backend system for managing hostel complaints, student authentic
 - Alembic database migrations
 - Automated testing
 - Swagger/OpenAPI documentation
+- Production-ready health checks
+- Environment-based configuration
 
 ---
 
 ## Tech Stack
 
 | Technology | Purpose |
-|---|---|
+|------------|---------|
 | Python 3.12+ | Programming language |
 | FastAPI | Backend web framework |
 | SQLAlchemy | ORM |
@@ -61,6 +63,7 @@ hostel-complaint-management/
 │   └── test_complaints.py
 │
 ├── .env
+├── .env.example
 ├── .gitignore
 ├── pytest.ini
 ├── alembic.ini
@@ -68,7 +71,7 @@ hostel-complaint-management/
 └── README.md
 ```
 
-> **Note:** The `.env` file should not be committed to version control. Make sure `.env` is included in your `.gitignore`.
+> **Note:** The `.env` file contains sensitive configuration and must not be committed to version control. Make sure `.env` is included in `.gitignore`.
 
 ---
 
@@ -110,7 +113,7 @@ python -m venv .venv
 
 Activate the virtual environment:
 
-```powershell
+```bash
 .venv\Scripts\activate
 ```
 
@@ -135,19 +138,26 @@ pip install -r requirements.txt
 Create a `.env` file in the project root directory.
 
 ```env
+DATABASE_URL=postgresql+asyncpg://postgres:<password>@localhost/hostel_db
 JWT_SECRET_KEY=your-secret-key
 JWT_ALGORITHM=HS256
 ```
 
-If your application uses a PostgreSQL database URL, configure it according to your `database.py` configuration.
+The database URL should contain your PostgreSQL username, password, host, and database name.
 
-Example:
+### Example `.env.example`
+
+The repository includes an `.env.example` file containing placeholder values:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/hostel_db
+DATABASE_URL=postgresql+asyncpg://postgres:<password>@localhost/hostel_db
+JWT_SECRET_KEY=your-secret-key
+JWT_ALGORITHM=HS256
 ```
 
-> **Important:** Never commit your `.env` file or expose your secret keys publicly.
+Copy the example configuration into a `.env` file and replace the placeholder values with your actual configuration.
+
+> **Important:** Never commit `.env` or expose your secret keys publicly.
 
 ---
 
@@ -171,7 +181,13 @@ CREATE DATABASE hostel_db;
 
 ### 2. Configure the Database
 
-Configure the PostgreSQL connection in `database.py` or through the appropriate environment variables.
+The application reads the PostgreSQL connection string from the `DATABASE_URL` environment variable.
+
+Example:
+
+```env
+DATABASE_URL=postgresql+asyncpg://postgres:<password>@localhost/hostel_db
+```
 
 ---
 
@@ -186,6 +202,8 @@ alembic upgrade head
 ---
 
 ## Running the API
+
+### Development
 
 Start the FastAPI development server using:
 
@@ -217,9 +235,11 @@ http://127.0.0.1:8000/docs
 http://127.0.0.1:8000/redoc
 ```
 
+Swagger UI can be used to test the API endpoints directly from the browser.
+
 ---
 
-## Authentication
+# Authentication
 
 The API uses **JWT Bearer Authentication**.
 
@@ -227,7 +247,7 @@ The API uses **JWT Bearer Authentication**.
 
 Send a request to:
 
-```http
+```text
 POST /signup
 ```
 
@@ -243,13 +263,22 @@ Example request:
 }
 ```
 
+Example response:
+
+```json
+{
+  "message": "Account created successfully",
+  "username": "student01"
+}
+```
+
 ---
 
 ### 2. Login
 
 Send a request to:
 
-```http
+```text
 POST /login
 ```
 
@@ -275,18 +304,21 @@ Example response:
 
 ### 3. Authorize Protected Endpoints
 
-For protected endpoints, provide the JWT token using:
-
-```text
-Authorization: Bearer <access_token>
-```
+Protected endpoints require a valid JWT access token.
 
 In Swagger UI:
 
 1. Open `/docs`
 2. Click **Authorize**
-3. Enter your access token
+3. Enter the username and password used during login
 4. Click **Authorize**
+5. Swagger will use the JWT token for protected requests
+
+Protected requests use the following authorization format:
+
+```text
+Authorization: Bearer <access_token>
+```
 
 ---
 
@@ -296,17 +328,27 @@ In Swagger UI:
 
 ### Check API Health
 
-```http
+```text
 GET /health
 ```
 
-Checks whether the API is running.
+Checks whether the API and PostgreSQL database are available.
 
-Example response:
+### Healthy Response
 
 ```json
 {
-  "status": "success"
+  "status": "healthy",
+  "database": "connected"
+}
+```
+
+If the database is unavailable:
+
+```json
+{
+  "status": "unhealthy",
+  "database": "unavailable"
 }
 ```
 
@@ -316,13 +358,13 @@ Example response:
 
 ## Student Signup
 
-```http
+```text
 POST /signup
 ```
 
 Creates a new student account.
 
-Example request:
+### Example Request
 
 ```json
 {
@@ -338,20 +380,20 @@ Example request:
 
 ## Student Login
 
-```http
+```text
 POST /login
 ```
 
 Authenticates a student and returns a JWT access token.
 
-Example form data:
+### Example Form Data
 
 ```text
 username=student01
 password=password123
 ```
 
-Example response:
+### Example Response
 
 ```json
 {
@@ -366,7 +408,7 @@ Example response:
 
 ## Create a Complaint
 
-```http
+```text
 POST /complaints
 ```
 
@@ -388,47 +430,49 @@ Authorization: Bearer <access_token>
 }
 ```
 
+The student ID is automatically obtained from the authenticated user's JWT token.
+
 ---
 
 ## Get Complaints
 
-```http
+```text
 GET /complaints
 ```
 
-Retrieves complaints.
+Retrieves complaints belonging to the authenticated student.
 
 ### Supported Query Parameters
 
 | Parameter | Description |
-|---|---|
+|-----------|-------------|
 | `category` | Filter complaints by category |
 | `status` | Filter complaints by status |
-| `search` | Search complaints |
+| `search` | Search complaint title and description |
 | `skip` | Number of records to skip |
 | `limit` | Maximum number of records to return |
 
 ### Filter by Category
 
-```http
+```text
 GET /complaints?category=Electrical
 ```
 
 ### Filter by Status
 
-```http
+```text
 GET /complaints?status=Pending
 ```
 
 ### Search Complaints
 
-```http
+```text
 GET /complaints?search=fan
 ```
 
 ### Pagination
 
-```http
+```text
 GET /complaints?skip=0&limit=10
 ```
 
@@ -436,7 +480,7 @@ GET /complaints?skip=0&limit=10
 
 ## Get a Specific Complaint
 
-```http
+```text
 GET /complaints/{complaint_id}
 ```
 
@@ -444,19 +488,19 @@ Retrieves a specific complaint using its ID.
 
 Example:
 
-```http
+```text
 GET /complaints/7
 ```
 
-### Authentication
-
 Requires a valid JWT access token.
+
+Only the student who owns the complaint can access it.
 
 ---
 
 ## Update a Complaint
 
-```http
+```text
 PATCH /complaints/{complaint_id}
 ```
 
@@ -464,11 +508,11 @@ Updates an existing complaint.
 
 Example:
 
-```http
+```text
 PATCH /complaints/7
 ```
 
-Example request:
+### Example Request
 
 ```json
 {
@@ -477,15 +521,15 @@ Example request:
 }
 ```
 
-### Authentication
-
 Requires a valid JWT access token.
+
+Only the student who owns the complaint can update it.
 
 ---
 
 ## Delete a Complaint
 
-```http
+```text
 DELETE /complaints/{complaint_id}
 ```
 
@@ -493,13 +537,21 @@ Deletes an existing complaint.
 
 Example:
 
-```http
+```text
 DELETE /complaints/7
 ```
 
-### Authentication
-
 Requires a valid JWT access token.
+
+Only the student who owns the complaint can delete it.
+
+### Example Response
+
+```json
+{
+  "message": "Complaint 7 deleted successfully"
+}
+```
 
 ---
 
@@ -528,6 +580,12 @@ The test suite uses an isolated asynchronous SQLite database for testing.
 - Complaint filtering
 - Notification service integration
 
+The expected result is:
+
+```text
+9 passed
+```
+
 ---
 
 # Database Migrations
@@ -535,6 +593,8 @@ The test suite uses an isolated asynchronous SQLite database for testing.
 The project uses **Alembic** for database schema migrations.
 
 ### Create a New Migration
+
+After modifying the database models:
 
 ```bash
 alembic revision --autogenerate -m "describe change"
@@ -560,23 +620,71 @@ alembic history
 
 ---
 
-# API Documentation
+# Deployment
 
-Interactive API documentation is automatically generated by FastAPI.
+## Production Startup
 
-### Swagger UI
+For development, the application can be started using:
 
-```text
-/docs
+```bash
+uvicorn main:app --reload
 ```
 
-### ReDoc
+For production-style execution, disable auto-reload:
 
-```text
-/redoc
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-You can use Swagger UI to test the API endpoints directly from your browser.
+The production startup command does not use the Uvicorn development reload option.
+
+---
+
+## Health Check
+
+The `/health` endpoint checks both the FastAPI application and PostgreSQL database connection.
+
+```text
+GET /health
+```
+
+### Healthy Response
+
+```json
+{
+  "status": "healthy",
+  "database": "connected"
+}
+```
+
+### Unhealthy Response
+
+```json
+{
+  "status": "unhealthy",
+  "database": "unavailable"
+}
+```
+
+This allows deployment environments to verify that the API and its database dependency are available.
+
+---
+
+## Environment Configuration
+
+Sensitive configuration is stored using environment variables.
+
+Required environment variables include:
+
+```env
+DATABASE_URL=postgresql+asyncpg://postgres:<password>@localhost/hostel_db
+JWT_SECRET_KEY=your-secret-key
+JWT_ALGORITHM=HS256
+```
+
+The `.env` file must not be committed to source control.
+
+The `.env.example` file can be committed because it contains only placeholder values.
 
 ---
 
@@ -603,6 +711,18 @@ Student
           └── Delete Complaint
 ```
 
+When a complaint is created:
+
+```text
+Create Complaint
+       │
+       ├── Save to PostgreSQL
+       │
+       ├── Notification Service
+       │
+       └── Escalation Service
+```
+
 ---
 
 # Security
@@ -615,6 +735,8 @@ The application implements several security mechanisms:
 - Complaint ownership authorization
 - Environment variables for sensitive configuration
 - `.env` excluded from version control
+- Student IDs are obtained from authenticated JWT tokens
+- Students can only access their own complaints
 
 ---
 
@@ -638,6 +760,28 @@ Run the test suite before committing changes:
 ```bash
 pytest
 ```
+
+---
+
+# Final Demonstration Flow
+
+For a complete demonstration of the application:
+
+1. Start PostgreSQL.
+2. Apply database migrations.
+3. Start the FastAPI application.
+4. Open Swagger UI at `/docs`.
+5. Register a new student using `/signup`.
+6. Login using `/login`.
+7. Authorize Swagger using the authenticated credentials.
+8. Create a complaint using `/complaints`.
+9. Verify the notification and escalation services.
+10. Retrieve the complaint.
+11. Test search and filtering.
+12. Update the complaint.
+13. Delete the complaint.
+14. Verify the health endpoint.
+15. Run the automated test suite using `pytest`.
 
 ---
 
